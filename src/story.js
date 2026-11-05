@@ -1,0 +1,4 @@
+function event(s,title,text,kind='life'){s.events.push({id:++s.serial,time:s.time,title,text,kind,cash:s.cash,bank:s.bank,debt:s.debt,net:total(s)});}
+function once(s,key,title,text){if(!s.flags[key]){s.flags[key]=true;event(s,title,text,'milestone');}}
+function entry(s,type,cash=0,bank=0,debt=0,fee=0,note=''){s.ledger.push({id:++s.serial,time:s.time,type,cash,bank,debt,fee,note});}
+function milestones(s){const account=s.cash+equity(s);s.stats.peak=Math.max(s.stats.peak,account);if(account>=100000000)once(s,'million','七位数','你把屏幕亮度调低，数字却没有变。阿岚问你周末有空吗，你过了很久才回复。');if(s.flags.million&&account<80000000)once(s,'fall','曾经拥有','你翻出了那张七位数的截图。现在的钱依然能买很多东西，截图却像一张欠条。');if(account<=1)once(s,'zero','交易账户归零','账户没有余钱了。银行、资产与债务仍在原处。明天可以去工作，也可以先睡一觉。');if(total(s)<=0)once(s,'netzero','生活的另一张账','把资产和债务也算进去，净资产已经不再为正。这和交易账户归零，是两件不同的事。');}
