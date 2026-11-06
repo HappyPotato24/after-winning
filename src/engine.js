@@ -93,7 +93,8 @@ function liquidate(s){for(const o of [...s.positions])if(o.leverage>1){const p=p
 function settle(s){const r=s.round;if(!r)return;const winner=r.spot>r.open?'up':'down';const before=s.stats.pnl,had=s.positions.length>0,hadTrade=r.started;for(const o of [...s.positions])close(s,o.id,1,'settle',winner);const pnl=s.stats.pnl-(r.pnlStart??before);if(hadTrade){if(pnl>=0){s.stats.wins++;s.stats.streak=0;}else{s.stats.losses++;s.stats.streak++;}}s.round=null;s.paused=true;if(r.guide===1){s.guide=2;event(s,'01 / 百倍逆转','屏幕上的数字停在 980,392.16 U。你截了图，没发给任何人。母亲的消息还躺在通知栏：“今天回来吃饭吗？”这场固定开场不代表低价份额容易获胜。','chapter');}else if(r.guide===2){s.guide=3;event(s,'02 / 失去的那一半','还有 490,196.08 U，远远超过起点。可你盯着的，是刚才没有保住的另一半。阿岚说：“出来吃碗面？”从这里起，决定权交还给你。','chapter');}else{event(s,`第 ${r.id} 轮落幕 · ${winner==='up'?'涨':'跌'}`,hadTrade?`本轮全部操作累计实现 ${(pnl/100).toFixed(2)} U。${pnl>=0?['你关掉计算器，才发现手边的茶已经凉了。','阿岚发来晚饭的照片。这次，你没有立刻打开下一轮。','账户里的数字停住了。窗外的生活还在往前走。'][r.id%3]:['你把手从鼠标上挪开。屏幕里的曲线已经不再变化。','你又算了一次刚才的损失，然后把计算器放下。','未读消息亮着。你盯了一会儿，回了一个“在”。'][r.id%3]}`:'这一轮你没有持仓到最后。看过一场行情，也是一段经历。','round');}milestones(s);}
 function bills(s){const interest=Math.round(s.debt*.0003),cost=s.expense;const paid=Math.min(s.bank,cost);s.bank-=paid;s.debt+=interest+cost-paid;entry(s,'每日生活费与利息',0,-paid,interest+cost-paid,0,`生活费 ${cost/100} U；债息 ${interest/100} U（每日 0.03%，按分四舍五入）`);milestones(s);}
 function advance(s,minutes){if(s.ended)throw Error('故事已封存，时钟不再推进');if(!Number.isFinite(minutes)||minutes<0||minutes>43200)throw Error('推进时间无效');while(minutes>1e-7){const r=s.round;const dt=Math.min(minutes,r?.25:DAY-(s.time%DAY));if(r){if(r.guide&&!r.started)break;r.elapsed=Math.min(r.duration,r.elapsed+dt);if(r.guide){const frame=guideFrame(r.guide,r.elapsed);r.spot=frame.spot;r.x=Math.log(r.spot/r.open);r.p=frame.p;}else{r.x+=r.mu*dt+.002*Math.sqrt(dt)*normal(s);r.spot=r.open*Math.exp(r.x);const remaining=r.duration-r.elapsed;r.p=remaining<1e-8?(r.x>0?.99:.01):Math.max(.01,Math.min(.99,cdf((r.x+r.mu*remaining)/(.002*Math.sqrt(remaining)))));}
-r.history.push([r.elapsed,r.spot,r.p]);if(r.history.length>720)r.history=r.history.filter((_,i)=>i%2===0||i===r.history.length-1);if(!r.guide)liquidate(s);milestones(s);}
+// A day-long round plots one point per 10 simulated minutes (= 10 real seconds).
+if(r.duration!==1440||Math.abs(r.elapsed/10-Math.round(r.elapsed/10))<1e-9||r.elapsed>=r.duration-1e-8)r.history.push([r.elapsed,r.spot,r.p]);if(r.history.length>720)r.history=r.history.filter((_,i)=>i%2===0||i===r.history.length-1);if(!r.guide)liquidate(s);milestones(s);}
 const oldDay=Math.floor(s.time/DAY);s.time=Math.round((s.time+dt)*1e6)/1e6;minutes-=dt;if(Math.floor(s.time/DAY)>oldDay)bills(s);if(r&&r.elapsed>=r.duration-1e-8)settle(s);}
 }
 
@@ -102,6 +103,40 @@ function transfer(s,amount,direction){lifeAllowed(s);if(!Number.isSafeInteger(am
 function borrow(s,amount){lifeAllowed(s);if(!Number.isSafeInteger(amount)||amount<=0||amount>Math.max(0,s.limit-s.debt))throw Error('超过剩余借款额度');s.bank+=amount;s.debt+=amount;entry(s,'生活借款',0,amount,amount);event(s,'借来的现金',`借入 ${(amount/100).toFixed(2)} U。银行里多了一笔钱，负债栏也是。每日利率 0.03%，复利计息。`,'debt');s.flags.borrow=true;}
 function repay(s,amount){lifeAllowed(s);if(!Number.isSafeInteger(amount)||amount<=0||amount>s.bank||amount>s.debt)throw Error('还款金额超过存款或债务');s.bank-=amount;s.debt-=amount;entry(s,'主动还款',0,-amount,-amount);event(s,'少了一点重量',`还掉 ${(amount/100).toFixed(2)} U。你把还款提醒向后划走，这一次是真的。`,'debt');}
 function day(s,work){lifeAllowed(s);advance(s,DAY);if(work){s.bank+=s.wage;entry(s,'工作一天',0,s.wage);event(s,'回到日常',`一整天的工作结束，工资 ${(s.wage/100).toFixed(2)} U 进入银行。楼下那家面店还开着。`,'work');}else event(s,'没有盯盘的一天','你洗了衣服，给家里回了电话。生活费和债务利息仍照常计算。','rest');s.paused=true;milestones(s);}
+function skipDays(s,days,work){
+  lifeAllowed(s);
+  if(!Number.isSafeInteger(days)||days<1||days>3650||typeof work!=='boolean')throw Error('请选择 1～3650 的整数天数和有效的生活方式');
+  if(s.time+days*DAY>1e8)throw Error('快进后的日期超出可保存范围，请减少天数');
+  // Simulate on a candidate so a failed range/save check never changes the real story.
+  const draft=JSON.parse(JSON.stringify(s));
+  let income=0;
+  for(let i=0;i<days;i++){
+    advance(draft,DAY);
+    if(work){draft.bank+=draft.wage;income+=draft.wage;entry(draft,'工作一天',0,draft.wage,0,0,`多天快进 · 第 ${i+1}/${days} 天`);}
+    if(![draft.cash,draft.bank,draft.debt].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=1e15))throw Error('快进后的金额超出可保存范围，当前故事未改变，请减少天数');
+    milestones(draft);
+  }
+  draft.paused=true;
+  event(draft,work?`按时出门的 ${days} 天`:`日历翻过了 ${days} 天`,`${work?'这段时间，你每天去工作，晚上再回到自己的生活。':'你暂时离开了行情，把这些天留给了生活。'} 共推进 ${days} 天，工资累计 ${(income/100).toFixed(2)} U；银行存款变化 ${((draft.bank-s.bank)/100).toFixed(2)} U，生活债务变化 ${((draft.debt-s.debt)/100).toFixed(2)} U。每日开支和利息都已经记在账上。`,'timeskip');
+  let checked;
+  try{checked=validate(draft);}catch{throw Error('本次快进超出存档可保存范围，当前故事未改变，请减少天数');}
+  Object.assign(s,checked);
+}
+function updateLiving(s,changes){
+  lifeAllowed(s);
+  if(!changes||typeof changes!=='object'||Array.isArray(changes)||!Object.keys(changes).length||Object.keys(changes).some(k=>!['wage','expense'].includes(k)))throw Error('请填写需要修改的收入或生活费');
+  for(const n of Object.values(changes))if(!Number.isSafeInteger(n)||n<0||n>100000000000)throw Error('收入和生活费须为 0～1,000,000,000 U，最多两位小数');
+  const before={wage:s.wage,expense:s.expense},draft=JSON.parse(JSON.stringify(s));
+  if(Object.hasOwn(changes,'wage'))draft.wage=changes.wage;
+  if(Object.hasOwn(changes,'expense'))draft.expense=changes.expense;
+  const note=`每日工作收入 ${(before.wage/100).toFixed(2)} → ${(draft.wage/100).toFixed(2)} U；每日生活费 ${(before.expense/100).toFixed(2)} → ${(draft.expense/100).toFixed(2)} U`;
+  entry(draft,'调整生活收支',0,0,0,0,note);
+  event(draft,'重新安排日常',`${note}。你把接下来的日子重新算了一遍，过去已经发生的工资与账单仍留在原处。`,'budget');
+  let checked;
+  try{checked=validate(draft);}catch{throw Error('本次修改超出存档可保存范围，当前故事未改变');}
+  Object.assign(s,checked);
+}
+
 function sellAsset(s,id){lifeAllowed(s);const a=s.assets.find(x=>x.id===id);if(!a||a.sold)throw Error('资产已出售或不存在');a.sold=true;advance(s,a.days*DAY);const proceeds=Math.round(a.value*a.discount);s.bank+=proceeds;if(a.id==='car'){s.wage=Math.round(s.wage*.85);s.expense+=2000;}if(a.id==='home')s.expense+=12000;entry(s,'变卖'+a.name,0,proceeds,0,0,`耗时 ${a.days} 天；账面价值 ${a.value/100} U`);event(s,'空出来的位置',`${a.name}卖了 ${(proceeds/100).toFixed(2)} U。${a.id==='home'?'钥匙交出去以后，每天增加 120 U 租金。':a.id==='car'?'以后工资减少 15%，每天多花 20 U 通勤。':'桌上空了一块，钱进入了银行。'}`,'asset');s.paused=true;milestones(s);}
 function finish(s,kind){if(s.ended)throw Error('故事已终止');if(kind==='leave'&&s.round){for(const o of [...s.positions])close(s,o.id,1,'exit');s.round=null;}s.ended=kind;s.paused=true;event(s,kind==='leave'?'合上屏幕':'故事在这里停下',kind==='leave'?`你选择离场。净资产 ${(total(s)/100).toFixed(2)} U，生活债务 ${(s.debt/100).toFixed(2)} U。${s.debt>0?'未还完的债，仍属于以后的生活。':'窗外还有一整天。'} ${s.flags.withdraw?'曾经落袋的钱，也曾带来真实的片刻安稳。':''}`:'人物的故事到此终止。不描写过程。当前资产、持仓与债务作为记录保留，没有奖励，也没有债务豁免。','ending');}
 
@@ -112,6 +147,6 @@ if(s.assets.length!==expectedAssets.length)fail();s.assets.forEach((a,i)=>{const
 if(s.round){const r=s.round;if(!num(r.id)||r.id!==s.roundNo||![0,1,2].includes(r.guide)||!PERIODS.includes(r.duration)||!Number.isFinite(r.elapsed)||r.elapsed<0||r.elapsed>=r.duration||r.elapsed*4%1!==0||typeof r.started!=='boolean'||r.open!==100||!Number.isFinite(r.x)||Math.abs(r.x)>100||!Number.isFinite(r.mu)||Math.abs(r.mu)>.000081||!Number.isFinite(r.spot)||r.spot<=0||Math.abs(r.spot-100*Math.exp(r.x))>1e-7||!Number.isFinite(r.p)||r.p<.009999||r.p>.990001||!Array.isArray(r.history)||r.history.length>721)fail();for(const h of r.history)if(!Array.isArray(h)||h.length!==3||h.some(x=>!Number.isFinite(x))||h[0]<0||h[0]>r.elapsed||h[1]<=0||h[2]<0||h[2]>1)fail();if(r.guide&&(r.guide!==s.guide||r.duration!==5))fail();if(s.guide<=2&&r.guide!==s.guide)fail();if(r.pnlStart===undefined)r.pnlStart=s.stats.pnl;if(!Number.isSafeInteger(r.pnlStart)||Math.abs(r.pnlStart)>1e15)fail();}else if(s.positions.length)fail();const ids=new Set();for(const o of s.positions){if(!s.round||o.roundId!==s.round.id||!num(o.id)||ids.has(o.id)||!['up','down'].includes(o.side)||![1,2,5,10].includes(o.leverage)||!Number.isFinite(o.q)||o.q<=0||o.q>1e15||!Number.isFinite(o.p)||o.p<.009999||o.p>.990001)fail();if(o.grossCarry===undefined)o.grossCarry=0;if(!Number.isFinite(o.grossCarry)||o.grossCarry<0||o.grossCarry>=1)fail();ids.add(o.id);for(const k of ['budget','cost','margin','finance','fee','initial'])if(!num(o[k]))fail();if(Math.abs(o.cost-o.margin-o.finance)>3||Math.abs(o.budget-o.margin-o.fee)>3||Math.abs(o.q*o.p*100-o.cost)>3)fail();}
 for(const e of s.events){if(!num(e.id)||!Number.isFinite(e.time)||e.time<0||e.time>s.time||typeof e.title!=='string'||e.title.length>300||typeof e.text!=='string'||e.text.length>5000||typeof e.kind!=='string')fail();for(const k of ['cash','bank','debt','net'])if(!Number.isSafeInteger(e[k])||Math.abs(e[k])>1e15)fail();}for(const e of s.ledger){if(!num(e.id)||!Number.isFinite(e.time)||e.time<0||e.time>s.time||typeof e.type!=='string'||e.type.length>200||typeof e.note!=='string'||e.note.length>2000)fail();for(const k of ['cash','bank','debt','fee'])if(!Number.isSafeInteger(e[k])||Math.abs(e[k])>1e15)fail();}s.paused=true;return s;}
 
-const api={VERSION,DAY,PERIODS,backgrounds,setupFields,checkedSetup,classifyProfile,profileIntro,customAssets,newCustomGame,guideFrame,cents,rate,quote,cdf,newGame,total,equity,event,entry,startRound,buy,close,advance,transfer,borrow,repay,day,sellAsset,finish,validate,price,milestones};if(typeof module!=='undefined')module.exports=api;else root.Game=api;
+const api={VERSION,DAY,PERIODS,backgrounds,setupFields,checkedSetup,classifyProfile,profileIntro,customAssets,newCustomGame,guideFrame,cents,rate,quote,cdf,newGame,total,equity,event,entry,startRound,buy,close,advance,transfer,borrow,repay,day,skipDays,updateLiving,sellAsset,finish,validate,price,milestones};if(typeof module!=='undefined')module.exports=api;else root.Game=api;
 
 })(typeof window!=='undefined'?window:globalThis);
