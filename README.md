@@ -60,3 +60,11 @@ node tests/life-extensions.test.cjs
 ## 首版限制
 
 仅一个模拟指数；价格模型采用有限时间步长，概率作边界截断，不模拟真实流动性、滑点、订单簿和外部金融平台。人生事件使用本地中文模板与实际状态组合，属于轻量故事系统。轨迹按真实发生顺序延伸，没有预制结局树。当前浏览器保存一个活动故事，其他故事通过 JSON 独立归档。
+
+
+## Contributors
+
+- [HappyPotato24](https://github.com/HappyPotato24)：项目作者，负责创意、需求与功能决策。
+- **Codex（OpenAI AI 编程助手）**：协助代码实现、问题修复、验证与文档整理。
+
+Git 提交的作者归属项目所有者；`Assisted-by: Codex (OpenAI)` 用于记录 AI 协作，不代表独立的 GitHub 用户账号。
